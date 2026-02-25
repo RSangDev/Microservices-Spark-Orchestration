@@ -1,0 +1,26 @@
+# requirements-ci.txt
+# Dependências para o CI (GitHub Actions).
+# Inclui o Airflow core que a imagem Docker já fornece em produção,
+# mas que o CI precisa instalar para rodar os testes.
+
+# Core (versão fixada para reprodutibilidade no CI)
+apache-airflow==2.8.1
+
+# Tudo do requirements.txt base (exceto pyspark — muito pesado para CI)
+apache-airflow-providers-celery>=3.6.0
+apache-airflow-providers-postgres>=5.10.0
+apache-airflow-providers-http>=4.9.0
+
+# HTTP
+requests>=2.31.0
+tenacity>=8.2.0
+
+# Testes
+pytest>=7.4.0
+pytest-mock>=3.12.0
+pytest-cov>=4.1.0
+responses>=0.25.0
+
+# Qualidade de código
+black==24.3.0
+flake8>=7.0.0
