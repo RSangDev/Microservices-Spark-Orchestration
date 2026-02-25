@@ -1,0 +1,61 @@
+black==26.1.0
+flake8==7.3.0
+
+# ─── requirements.txt ────────────────────────────────────────────────────────
+# Dependências do projeto: Orquestração de Microserviços com Airflow + Spark
+# Versões fixadas para garantir reprodutibilidade.
+#
+# Instalação:
+#   pip install -r requirements.txt
+#
+# No Dockerfile, esse arquivo é instalado sobre a imagem base do Airflow.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Airflow Core ──────────────────────────────────────────────────────────────
+# A imagem base (apache/airflow:2.8.1) já inclui o core.
+# Listado aqui apenas para referência e uso fora do Docker (ex.: CI, testes locais).
+apache-airflow==2.8.1
+
+# ── Airflow Providers ─────────────────────────────────────────────────────────
+apache-airflow-providers-celery==3.6.2          # CeleryExecutor
+apache-airflow-providers-postgres==5.10.2       # PostgresHook / PostgresOperator
+apache-airflow-providers-http==4.9.0            # SimpleHttpOperator / HttpHook
+apache-airflow-providers-amazon==8.17.0         # S3Hook, S3Sensor, ECS, EMR
+apache-airflow-providers-apache-spark==4.7.1    # SparkSubmitOperator (referência)
+
+# ── Spark & PySpark ───────────────────────────────────────────────────────────
+pyspark==3.5.1                                  # Deve ser a mesma versão do cluster Spark
+
+# ── AWS ───────────────────────────────────────────────────────────────────────
+boto3==1.34.34                                  # Acesso ao S3 / CloudWatch / SNS
+botocore==1.34.34                               # Dependência do boto3
+s3fs==2024.2.0                                  # Leitura de S3 via pandas/pyarrow
+
+# ── Dados & Serialização ──────────────────────────────────────────────────────
+pyarrow==15.0.0                                 # Leitura/escrita Parquet
+pandas==2.2.0                                   # Manipulação de dados no Airflow worker
+fastparquet==2024.2.0                           # Alternativa para leitura de Parquet
+
+# ── HTTP / Networking ─────────────────────────────────────────────────────────
+requests==2.31.0                                # Chamadas REST para microserviços
+tenacity==8.2.3                                 # Retry com backoff para chamadas HTTP
+
+# ── Observabilidade ───────────────────────────────────────────────────────────
+opentelemetry-api==1.22.0                       # Traces distribuídos
+opentelemetry-sdk==1.22.0
+opentelemetry-exporter-otlp==1.22.0
+prometheus-client==0.19.0                       # Métricas Prometheus
+
+# ── Utilitários ───────────────────────────────────────────────────────────────
+cryptography==42.0.2                            # Fernet key (conexões Airflow)
+pendulum==3.0.0                                 # Datas/timezones nas DAGs
+python-dotenv==1.0.1                            # Leitura do .env em dev local
+pydantic==2.6.1                                 # Validação de schemas de eventos
+
+# ── Testes ────────────────────────────────────────────────────────────────────
+pytest==7.4.4
+pytest-mock==3.12.0
+pytest-cov==4.1.0
+pytest-asyncio==0.23.4
+moto[s3]==5.0.1                                 # Mock da AWS (S3) em testes
+responses==0.25.0                               # Mock de chamadas HTTP
