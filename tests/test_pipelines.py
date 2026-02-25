@@ -127,7 +127,7 @@ class TestDagSyntax:
     def test_dag_ids_in_source(self):
         import os
 
-        expected = { # noqa
+        expected = {  # noqa
             "microservices_orchestration_pipeline.py": "microservices_orchestration_pipeline",
             "service_recovery_pipeline.py": "service_recovery_pipeline",
         }
