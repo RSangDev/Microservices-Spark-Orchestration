@@ -18,20 +18,42 @@ from airflow.operators.python import BranchPythonOperator
 from airflow.utils.trigger_rule import TriggerRule
 
 from operators.service_event_collector import ServiceEventCollectorOperator
-from operators.result_publisher_operator import ResultPublisherOperator
-from sensors.microservice_health_sensor import MicroserviceHealthSensor
 from hooks.service_registry_hook import ServiceRegistryHook
 
 log = logging.getLogger(__name__)
 
 MICROSERVICES = [
-    {"name": "orders-service",    "base_url": "http://orders-service:8001",  "events_endpoint": "/api/v1/events/export", "conn_id": "orders_service",    "priority": "high"},
-    {"name": "inventory-service", "base_url": "http://inventory-service:8002","events_endpoint": "/api/v1/events/export", "conn_id": "inventory_service", "priority": "high"},
-    {"name": "payments-service",  "base_url": "http://payments-service:8003", "events_endpoint": "/api/v1/events/export", "conn_id": "payments_service",  "priority": "critical"},
-    {"name": "shipping-service",  "base_url": "http://shipping-service:8004", "events_endpoint": "/api/v1/events/export", "conn_id": "shipping_service",  "priority": "medium"},
+    {
+        "name": "orders-service",
+        "base_url": "http://orders-service:8001",
+        "events_endpoint": "/api/v1/events/export",
+        "conn_id": "orders_service",
+        "priority": "high",
+    },
+    {
+        "name": "inventory-service",
+        "base_url": "http://inventory-service:8002",
+        "events_endpoint": "/api/v1/events/export",
+        "conn_id": "inventory_service",
+        "priority": "high",
+    },
+    {
+        "name": "payments-service",
+        "base_url": "http://payments-service:8003",
+        "events_endpoint": "/api/v1/events/export",
+        "conn_id": "payments_service",
+        "priority": "critical",
+    },
+    {
+        "name": "shipping-service",
+        "base_url": "http://shipping-service:8004",
+        "events_endpoint": "/api/v1/events/export",
+        "conn_id": "shipping_service",
+        "priority": "medium",
+    },
 ]
 
-SPARK_MASTER  = Variable.get("spark_master",  default_var="spark://spark-master:7077")
+SPARK_MASTER = Variable.get("spark_master", default_var="spark://spark-master:7077")
 EVENTS_BUCKET = Variable.get("events_bucket", default_var="s3a://microservices-events")
 OUTPUT_BUCKET = Variable.get("output_bucket", default_var="s3a://microservices-output")
 
@@ -68,7 +90,9 @@ with DAG(
                 services = registry.list_active_services(tag="event-producer")
                 return services if services else MICROSERVICES
             except Exception:
-                log.warning("Service Registry indisponível. Usando configuração estática.")
+                log.warning(
+                    "Service Registry indisponível. Usando configuração estática."
+                )
                 return MICROSERVICES
 
         @task
@@ -77,10 +101,12 @@ with DAG(
             from requests.adapters import HTTPAdapter
             from urllib3.util.retry import Retry
 
-            name     = service_config["name"]
+            name = service_config["name"]
             base_url = service_config["base_url"]
-            session  = requests.Session()
-            session.mount("http://", HTTPAdapter(max_retries=Retry(total=3, backoff_factor=0.5)))
+            session = requests.Session()
+            session.mount(
+                "http://", HTTPAdapter(max_retries=Retry(total=3, backoff_factor=0.5))
+            )
 
             try:
                 resp = session.get(f"{base_url}/health", timeout=10)
@@ -96,15 +122,17 @@ with DAG(
 
         @task(task_id="evaluate_cluster_health")
         def evaluate_cluster_health(health_results: list[dict]) -> str:
-            healthy     = [r for r in health_results if r.get("status") == "healthy"]
+            healthy = [r for r in health_results if r.get("status") == "healthy"]
             health_rate = len(healthy) / len(health_results) if health_results else 0
             log.info("Cluster health: %.0f%%", health_rate * 100)
             if health_rate >= 0.5:
                 return "full_pipeline"
-            raise RuntimeError(f"Cluster muito degradado ({health_rate:.0%}). Abortando.")
+            raise RuntimeError(
+                f"Cluster muito degradado ({health_rate:.0%}). Abortando."
+            )
 
         services = get_service_list()
-        results  = check_service_health.expand(service_config=services)
+        results = check_service_health.expand(service_config=services)
         # Retorna task única — sem tupla
         return evaluate_cluster_health(results)
 
@@ -113,8 +141,14 @@ with DAG(
     # ── 2. Branch ──────────────────────────────────────────────────────────────
 
     def route_pipeline(**context) -> str:
-        route = context["ti"].xcom_pull(task_ids="health_checks.evaluate_cluster_health")
-        return "collect_events.full_collect" if route == "full_pipeline" else "collect_events.partial_collect"
+        route = context["ti"].xcom_pull(
+            task_ids="health_checks.evaluate_cluster_health"
+        )
+        return (
+            "collect_events.full_collect"
+            if route == "full_pipeline"
+            else "collect_events.partial_collect"
+        )
 
     branch = BranchPythonOperator(
         task_id="route_based_on_health",
@@ -137,7 +171,9 @@ with DAG(
 
         partial = ServiceEventCollectorOperator(
             task_id="partial_collect",
-            services=[s for s in MICROSERVICES if s["priority"] in ("critical", "high")],
+            services=[
+                s for s in MICROSERVICES if s["priority"] in ("critical", "high")
+            ],
             output_path="{{ ds_nodash }}/{{ ts_nodash }}",
             mode="partial",
             batch_size=5_000,
@@ -167,8 +203,14 @@ with DAG(
 
         @task(task_id="spark_cross_service_join")
         def cross_join(parse_result: dict) -> dict:
-            log.info("Simulando cross-service join | records=%d", parse_result["records"])
-            return {"job": "cross_join", "status": "success", "records": parse_result["records"]}
+            log.info(
+                "Simulando cross-service join | records=%d", parse_result["records"]
+            )
+            return {
+                "job": "cross_join",
+                "status": "success",
+                "records": parse_result["records"],
+            }
 
         @task(task_id="spark_business_aggregations")
         def aggregate(join_result: dict) -> dict:
@@ -178,14 +220,18 @@ with DAG(
         @task(task_id="spark_anomaly_detection")
         def detect_anomalies(join_result: dict) -> dict:
             log.info("Simulando detecção de anomalias")
-            return {"job": "anomaly_detection", "status": "success", "anomalies_found": 3}
+            return {
+                "job": "anomaly_detection",
+                "status": "success",
+                "anomalies_found": 3,
+            }
 
         # Ponto de junção para as duas branches paralelas (agg + anomaly)
         spark_done = EmptyOperator(task_id="spark_done")
 
-        parsed  = parse_events(ds="{{ ds }}")
-        joined  = cross_join(parsed)
-        agg     = aggregate(joined)
+        parsed = parse_events(ds="{{ ds }}")
+        joined = cross_join(parsed)
+        agg = aggregate(joined)
         anomaly = detect_anomalies(joined)
 
         [agg, anomaly] >> spark_done
@@ -201,19 +247,31 @@ with DAG(
         @task(task_id="prepare_payloads")
         def prepare_payloads(ds: str) -> list[dict]:
             return [
-                {"service": s["name"], "endpoint": f"{s['base_url']}/api/v1/metrics/ingest"}
+                {
+                    "service": s["name"],
+                    "endpoint": f"{s['base_url']}/api/v1/metrics/ingest",
+                }
                 for s in MICROSERVICES
             ]
 
         @task(task_id="publish_metrics")
         def publish_metrics(payload: dict) -> dict:
             import requests
+
             try:
-                resp = requests.post(payload["endpoint"], json={"source": "airflow"}, timeout=10)
-                log.info("✅ Publicado para %s — HTTP %d", payload["service"], resp.status_code)
+                resp = requests.post(
+                    payload["endpoint"], json={"source": "airflow"}, timeout=10
+                )
+                log.info(
+                    "✅ Publicado para %s — HTTP %d",
+                    payload["service"],
+                    resp.status_code,
+                )
                 return {"service": payload["service"], "published": True}
             except Exception as e:
-                log.warning("⚠️ Falha ao publicar para %s: %s", payload["service"], str(e))
+                log.warning(
+                    "⚠️ Falha ao publicar para %s: %s", payload["service"], str(e)
+                )
                 return {"service": payload["service"], "published": False}
 
         payloads = prepare_payloads(ds="{{ ds }}")
@@ -226,14 +284,14 @@ with DAG(
 
     @task(task_id="register_execution_metrics", trigger_rule=TriggerRule.ALL_DONE)
     def register_metrics(ds: str, run_id: str, **context) -> dict:
-        dag_run        = context["dag_run"]
+        dag_run = context["dag_run"]
         task_instances = dag_run.get_task_instances()
-        failed         = [t.task_id for t in task_instances if t.state == "failed"]
+        failed = [t.task_id for t in task_instances if t.state == "failed"]
         metrics = {
-            "run_id":           run_id,
-            "execution_date":   ds,
-            "failed_tasks":     len(failed),
-            "pipeline_status":  "PARTIAL_FAILURE" if failed else "SUCCESS",
+            "run_id": run_id,
+            "execution_date": ds,
+            "failed_tasks": len(failed),
+            "pipeline_status": "PARTIAL_FAILURE" if failed else "SUCCESS",
         }
         log.info("📊 Métricas: %s", json.dumps(metrics, indent=2))
         return metrics
@@ -243,4 +301,13 @@ with DAG(
 
     # ── Dependências ───────────────────────────────────────────────────────────
 
-    start >> health_route >> branch >> collected >> spark_results >> published >> execution_metrics >> end
+    (
+        start
+        >> health_route
+        >> branch
+        >> collected
+        >> spark_results
+        >> published
+        >> execution_metrics
+        >> end
+    )

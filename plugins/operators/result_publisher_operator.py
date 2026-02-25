@@ -53,9 +53,14 @@ class ResultPublisherOperator(BaseOperator):
                 # Em produção: lê parquet do S3, serializa para o formato do serviço
                 payload = {"source": "airflow_pipeline", "run_id": context["run_id"]}
 
-                resp = requests.post(endpoint, json=payload, timeout=self.publish_timeout)
+                resp = requests.post(
+                    endpoint, json=payload, timeout=self.publish_timeout
+                )
                 resp.raise_for_status()
-                results[service] = {"status": "published", "http_status": resp.status_code}
+                results[service] = {
+                    "status": "published",
+                    "http_status": resp.status_code,
+                }
                 log.info("✅ Publicado para %s", service)
 
             except Exception as e:

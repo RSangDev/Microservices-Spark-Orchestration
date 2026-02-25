@@ -7,7 +7,6 @@ obter lista dinâmica de microserviços registrados.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from airflow.hooks.base import BaseHook
 
@@ -49,7 +48,9 @@ class ServiceRegistryHook(BaseHook):
         base_url = self.get_conn()
         params = {"tag": tag} if tag else {}
 
-        resp = requests.get(f"{base_url}/v1/catalog/services", params=params, timeout=10)
+        resp = requests.get(
+            f"{base_url}/v1/catalog/services", params=params, timeout=10
+        )
         resp.raise_for_status()
         raw_services = resp.json()
 
@@ -67,14 +68,22 @@ class ServiceRegistryHook(BaseHook):
 
             if details:
                 svc = details[0]
-                services.append({
-                    "name": service_name,
-                    "base_url": f"http://{svc['ServiceAddress']}:{svc['ServicePort']}",
-                    "events_endpoint": svc.get("ServiceMeta", {}).get("events_endpoint", "/api/v1/events/export"),
-                    "conn_id": f"{service_name.replace('-', '_')}",
-                    "topic": svc.get("ServiceMeta", {}).get("kafka_topic", f"{service_name}.events"),
-                    "priority": svc.get("ServiceMeta", {}).get("priority", "medium"),
-                })
+                services.append(
+                    {
+                        "name": service_name,
+                        "base_url": f"http://{svc['ServiceAddress']}:{svc['ServicePort']}",  # noqa
+                        "events_endpoint": svc.get("ServiceMeta", {}).get(
+                            "events_endpoint", "/api/v1/events/export"
+                        ),
+                        "conn_id": f"{service_name.replace('-', '_')}",
+                        "topic": svc.get("ServiceMeta", {}).get(
+                            "kafka_topic", f"{service_name}.events"
+                        ),
+                        "priority": svc.get("ServiceMeta", {}).get(
+                            "priority", "medium"
+                        ),
+                    }
+                )
 
         log.info("Serviços encontrados no registry (tag='%s'): %d", tag, len(services))
         return services

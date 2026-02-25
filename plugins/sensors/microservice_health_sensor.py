@@ -41,7 +41,11 @@ class MicroserviceHealthSensor(BaseSensorOperator):
     def poke(self, context: dict) -> bool:
         import requests
 
-        self.log.info("🔍 Verificando saúde de: %s (esperado: %s)", self.service_url, self.expected_status)
+        self.log.info(
+            "🔍 Verificando saúde de: %s (esperado: %s)",
+            self.service_url,
+            self.expected_status,
+        )
 
         try:
             resp = requests.get(self.service_url, timeout=10)
@@ -54,22 +58,35 @@ class MicroserviceHealthSensor(BaseSensorOperator):
                 if self.required_dependencies:
                     deps = health.get("dependencies", {})
                     unhealthy_deps = [
-                        d for d in self.required_dependencies
+                        d
+                        for d in self.required_dependencies
                         if deps.get(d, {}).get("status") != "healthy"
                     ]
                     if unhealthy_deps:
-                        self.log.warning("Dependências ainda não saudáveis: %s", unhealthy_deps)
+                        self.log.warning(
+                            "Dependências ainda não saudáveis: %s", unhealthy_deps
+                        )
                         return False
 
                 if status == self.expected_status:
-                    self.log.info("✅ Serviço saudável: %s (v%s)", self.service_url, health.get("version", "?"))
+                    self.log.info(
+                        "✅ Serviço saudável: %s (v%s)",
+                        self.service_url,
+                        health.get("version", "?"),
+                    )
                     return True
 
-                self.log.info("Aguardando... Status atual: '%s', esperado: '%s'", status, self.expected_status)
+                self.log.info(
+                    "Aguardando... Status atual: '%s', esperado: '%s'",
+                    status,
+                    self.expected_status,
+                )
                 return False
 
             elif resp.status_code in (503, 502):
-                self.log.info("Serviço ainda iniciando (HTTP %d). Aguardando...", resp.status_code)
+                self.log.info(
+                    "Serviço ainda iniciando (HTTP %d). Aguardando...", resp.status_code
+                )
                 return False
             else:
                 self.log.warning("Resposta inesperada: HTTP %d", resp.status_code)

@@ -12,28 +12,29 @@ Demonstra:
 
 import argparse
 import logging
-import sys
 
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
-from pyspark.sql.types import StringType
 
 log = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Spark: Cross-service join e enriquecimento")
-    parser.add_argument("--input",    required=True)
-    parser.add_argument("--output",   required=True)
-    parser.add_argument("--run-id",   required=True)
-    parser.add_argument("--services", required=True, help="Serviços disponíveis (comma-separated)")
+    parser = argparse.ArgumentParser(
+        description="Spark: Cross-service join e enriquecimento"
+    )
+    parser.add_argument("--input", required=True)
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument(
+        "--services", required=True, help="Serviços disponíveis (comma-separated)"
+    )
     return parser.parse_args()
 
 
 def create_spark_session(run_id: str) -> SparkSession:
     return (
-        SparkSession.builder
-        .appName(f"cross_service_join_{run_id}")
+        SparkSession.builder.appName(f"cross_service_join_{run_id}")
         .config("spark.sql.adaptive.enabled", "true")
         .config("spark.sql.adaptive.skewJoin.enabled", "true")
         .config("spark.sql.adaptive.skewJoin.skewedPartitionFactor", "5")
@@ -45,12 +46,7 @@ def create_spark_session(run_id: str) -> SparkSession:
 
 def read_service_events(spark: SparkSession, input_path: str, service: str):
     """Lê eventos de um serviço específico do output do parse_events job."""
-    return (
-        spark.read
-        .parquet(input_path)
-        .filter(F.col("_service") == service)
-        .cache()
-    )
+    return spark.read.parquet(input_path).filter(F.col("_service") == service).cache()
 
 
 def build_order_timeline(
@@ -69,8 +65,11 @@ def build_order_timeline(
 
     # Última atualização do pedido
     orders_latest = (
-        orders_df
-        .filter(F.col("event_type").isin("ORDER_CREATED", "ORDER_UPDATED", "ORDER_COMPLETED"))
+        orders_df.filter(
+            F.col("event_type").isin(
+                "ORDER_CREATED", "ORDER_UPDATED", "ORDER_COMPLETED"
+            )
+        )
         .withColumn("_rank", F.row_number().over(order_window))
         .filter(F.col("_rank") == 1)
         .select(
@@ -86,10 +85,12 @@ def build_order_timeline(
 
     # Último status de pagamento por pedido
     payments_latest = (
-        payments_df
-        .withColumn("_rank", F.row_number().over(
-            Window.partitionBy("order_id").orderBy(F.col("timestamp").desc())
-        ))
+        payments_df.withColumn(
+            "_rank",
+            F.row_number().over(
+                Window.partitionBy("order_id").orderBy(F.col("timestamp").desc())
+            ),
+        )
         .filter(F.col("_rank") == 1)
         .select(
             "order_id",
@@ -104,10 +105,12 @@ def build_order_timeline(
 
     # Shipment info (broadcast — geralmente menor)
     shipping_latest = (
-        shipping_df
-        .withColumn("_rank", F.row_number().over(
-            Window.partitionBy("order_id").orderBy(F.col("timestamp").desc())
-        ))
+        shipping_df.withColumn(
+            "_rank",
+            F.row_number().over(
+                Window.partitionBy("order_id").orderBy(F.col("timestamp").desc())
+            ),
+        )
         .filter(F.col("_rank") == 1)
         .select(
             "order_id",
@@ -132,15 +135,19 @@ def build_order_timeline(
             "payment_match",
             F.when(
                 F.col("payment_amount").isNotNull(),
-                F.abs(F.col("total_amount") - F.col("payment_amount")) < 0.01
-            ).otherwise(F.lit(None))
+                F.abs(F.col("total_amount") - F.col("payment_amount")) < 0.01,
+            ).otherwise(F.lit(None)),
         )
         .withColumn(
             "order_lifecycle_hours",
             F.when(
                 F.col("shipping_updated_at").isNotNull(),
-                (F.unix_timestamp("shipping_updated_at") - F.unix_timestamp("order_updated_at")) / 3600
-            ).otherwise(F.lit(None))
+                (
+                    F.unix_timestamp("shipping_updated_at")
+                    - F.unix_timestamp("order_updated_at")
+                )
+                / 3600,
+            ).otherwise(F.lit(None)),
         )
         .withColumn("_enriched_at", F.current_timestamp())
     )
@@ -154,15 +161,13 @@ def compute_inventory_impact(inventory_df, orders_df) -> object:
     """
     inv_window = Window.partitionBy("sku", "warehouse_id").orderBy("timestamp")
 
-    inventory_running = (
-        inventory_df
-        .withColumn("running_quantity", F.sum("quantity_delta").over(inv_window))
-        .withColumn(
-            "stockout_risk",
-            F.when(F.col("running_quantity") < 10, "high")
-             .when(F.col("running_quantity") < 50, "medium")
-             .otherwise("low")
-        )
+    inventory_running = inventory_df.withColumn(
+        "running_quantity", F.sum("quantity_delta").over(inv_window)
+    ).withColumn(
+        "stockout_risk",
+        F.when(F.col("running_quantity") < 10, "high")
+        .when(F.col("running_quantity") < 50, "medium")
+        .otherwise("low"),
     )
 
     return inventory_running
@@ -176,19 +181,24 @@ def main():
     log.info("🚀 Iniciando cross_service_join | run_id: %s", args.run_id)
 
     # Lê eventos parseados de cada serviço
-    orders_df    = read_service_events(spark, args.input, "orders-service")
-    payments_df  = read_service_events(spark, args.input, "payments-service")
+    orders_df = read_service_events(spark, args.input, "orders-service")
+    payments_df = read_service_events(spark, args.input, "payments-service")
     inventory_df = read_service_events(spark, args.input, "inventory-service")
-    shipping_df  = read_service_events(spark, args.input, "shipping-service")
+    shipping_df = read_service_events(spark, args.input, "shipping-service")
 
     log.info(
         "Eventos lidos | Orders: %d | Payments: %d | Inventory: %d | Shipping: %d",
-        orders_df.count(), payments_df.count(), inventory_df.count(), shipping_df.count()
+        orders_df.count(),
+        payments_df.count(),
+        inventory_df.count(),
+        shipping_df.count(),
     )
 
     # Constrói timeline consolidada de pedidos
     log.info("🔗 Executando cross-service join...")
-    enriched_orders = build_order_timeline(orders_df, payments_df, inventory_df, shipping_df)
+    enriched_orders = build_order_timeline(
+        orders_df, payments_df, inventory_df, shipping_df
+    )
 
     # Calcula impacto no inventário
     inventory_impact = compute_inventory_impact(inventory_df, orders_df)
@@ -197,26 +207,24 @@ def main():
     log.info("💾 Persistindo output enriquecido...")
 
     (
-        enriched_orders
-        .withColumn("_run_id", F.lit(args.run_id))
+        enriched_orders.withColumn("_run_id", F.lit(args.run_id))
         .repartition(50)
-        .write
-        .mode("overwrite")
+        .write.mode("overwrite")
         .parquet(f"{args.output}/orders_enriched")
     )
 
     (
-        inventory_impact
-        .withColumn("_run_id", F.lit(args.run_id))
+        inventory_impact.withColumn("_run_id", F.lit(args.run_id))
         .repartition(20, "warehouse_id")
-        .write
-        .mode("overwrite")
+        .write.mode("overwrite")
         .partitionBy("warehouse_id")
         .parquet(f"{args.output}/inventory_running")
     )
 
     enriched_count = enriched_orders.count()
-    log.info("✅ Cross-service join concluído | Pedidos enriquecidos: %d", enriched_count)
+    log.info(
+        "✅ Cross-service join concluído | Pedidos enriquecidos: %d", enriched_count
+    )
     spark.stop()
 
 

@@ -14,11 +14,9 @@ Diferencial em relação ao SparkSubmitOperator padrão:
 from __future__ import annotations
 
 import time
-from datetime import datetime
-from typing import Any
 
 import requests
-from airflow.exceptions import AirflowException, AirflowTaskTimeout
+from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 
@@ -113,7 +111,9 @@ class SparkMicroserviceOperator(BaseOperator):
 
         # Coleta métricas via Spark REST API
         metrics = self._collect_job_metrics(elapsed)
-        self.log.info("✅ Spark job concluído em %.1fs | Métricas: %s", elapsed, metrics)
+        self.log.info(
+            "✅ Spark job concluído em %.1fs | Métricas: %s", elapsed, metrics
+        )
 
         # Publica métricas via XCom para uso downstream
         context["ti"].xcom_push(key="spark_job_metrics", value=metrics)
@@ -125,12 +125,18 @@ class SparkMicroserviceOperator(BaseOperator):
         """Constrói o comando spark-submit com todos os parâmetros."""
         cmd = [
             self.spark_binary,
-            "--master", self.spark_master,
-            "--deploy-mode", "client",
-            "--num-executors", str(self.num_executors),
-            "--executor-memory", self.executor_memory,
-            "--executor-cores", str(self.executor_cores),
-            "--driver-memory", self.driver_memory,
+            "--master",
+            self.spark_master,
+            "--deploy-mode",
+            "client",
+            "--num-executors",
+            str(self.num_executors),
+            "--executor-memory",
+            self.executor_memory,
+            "--executor-cores",
+            str(self.executor_cores),
+            "--driver-memory",
+            self.driver_memory,
         ]
 
         # Adiciona configurações customizadas
@@ -156,6 +162,7 @@ class SparkMicroserviceOperator(BaseOperator):
     def _extract_app_id(self, line: str) -> str | None:
         """Extrai o Spark Application ID do output do spark-submit."""
         import re
+
         match = re.search(r"(application_\d+_\d+)", line)
         return match.group(1) if match else None
 
@@ -183,15 +190,23 @@ class SparkMicroserviceOperator(BaseOperator):
             )
             if resp.status_code == 200:
                 stages = resp.json()
-                metrics.update({
-                    "total_stages": len(stages),
-                    "completed_stages": sum(1 for s in stages if s.get("status") == "COMPLETE"),
-                    "failed_stages": sum(1 for s in stages if s.get("status") == "FAILED"),
-                    "total_tasks": sum(s.get("numTasks", 0) for s in stages),
-                    "input_bytes": sum(s.get("inputBytes", 0) for s in stages),
-                    "output_bytes": sum(s.get("outputBytes", 0) for s in stages),
-                    "shuffle_read_bytes": sum(s.get("shuffleReadBytes", 0) for s in stages),
-                })
+                metrics.update(
+                    {
+                        "total_stages": len(stages),
+                        "completed_stages": sum(
+                            1 for s in stages if s.get("status") == "COMPLETE"
+                        ),
+                        "failed_stages": sum(
+                            1 for s in stages if s.get("status") == "FAILED"
+                        ),
+                        "total_tasks": sum(s.get("numTasks", 0) for s in stages),
+                        "input_bytes": sum(s.get("inputBytes", 0) for s in stages),
+                        "output_bytes": sum(s.get("outputBytes", 0) for s in stages),
+                        "shuffle_read_bytes": sum(
+                            s.get("shuffleReadBytes", 0) for s in stages
+                        ),
+                    }
+                )
 
             # Executors
             exec_resp = requests.get(
@@ -200,7 +215,9 @@ class SparkMicroserviceOperator(BaseOperator):
             )
             if exec_resp.status_code == 200:
                 executors = exec_resp.json()
-                metrics["active_executors"] = len([e for e in executors if e.get("isActive")])
+                metrics["active_executors"] = len(
+                    [e for e in executors if e.get("isActive")]
+                )
 
         except Exception as e:
             self.log.warning("Não foi possível coletar métricas Spark REST: %s", str(e))
@@ -213,10 +230,13 @@ class SparkMicroserviceOperator(BaseOperator):
             self._attempt_job_cancellation()
 
         error_lines = [
-            l for l in output_lines
-            if any(kw in l for kw in ("Exception", "Error", "FAILED", "killed"))
+            l  # noqa
+            for l in output_lines  # noqa
+            if any(kw in l for kw in ("Exception", "Error", "FAILED", "killed"))  # noqa
         ]
-        error_context = "\n".join(error_lines[-30:]) if error_lines else "(sem detalhes)"
+        error_context = (
+            "\n".join(error_lines[-30:]) if error_lines else "(sem detalhes)"
+        )
 
         raise AirflowException(
             f"Spark job falhou (exit {return_code})\n"
@@ -235,7 +255,11 @@ class SparkMicroserviceOperator(BaseOperator):
             if resp.status_code == 200:
                 self.log.info("Job %s cancelado com sucesso.", self._job_id)
             else:
-                self.log.warning("Não foi possível cancelar job %s: HTTP %s", self._job_id, resp.status_code)
+                self.log.warning(
+                    "Não foi possível cancelar job %s: HTTP %s",
+                    self._job_id,
+                    resp.status_code,
+                )
         except Exception as e:
             self.log.warning("Erro ao cancelar job Spark: %s", str(e))
 

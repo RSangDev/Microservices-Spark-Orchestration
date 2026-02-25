@@ -23,8 +23,8 @@ from sensors.microservice_health_sensor import MicroserviceHealthSensor
 
 log = logging.getLogger(__name__)
 
-EVENTS_BUCKET  = Variable.get("events_bucket",  default_var="s3a://microservices-events")
-OUTPUT_BUCKET  = Variable.get("output_bucket",  default_var="s3a://microservices-output")
+EVENTS_BUCKET = Variable.get("events_bucket", default_var="s3a://microservices-events")
+OUTPUT_BUCKET = Variable.get("output_bucket", default_var="s3a://microservices-output")
 
 FAILURE_DATASET = Dataset("s3://microservices-events/signals/partial_failure")
 
@@ -53,19 +53,19 @@ with DAG(
     @task(task_id="resolve_recovery_params")
     def resolve_params(**context) -> dict:
         conf = context["dag_run"].conf or {}
-        ds   = context["ds"]
+        ds = context["ds"]
 
-        failed_services        = conf.get("failed_services", ["all"])
+        failed_services = conf.get("failed_services", ["all"])
         reprocess_window_hours = int(conf.get("reprocess_window_hours", 2))
-        run_id_to_recover      = conf.get("run_id", context["run_id"])
+        run_id_to_recover = conf.get("run_id", context["run_id"])
 
         params = {
-            "failed_services":        failed_services,
+            "failed_services": failed_services,
             "reprocess_window_hours": reprocess_window_hours,
-            "run_id_to_recover":      run_id_to_recover,
-            "recovery_date":          ds,
-            "input_path":             f"{EVENTS_BUCKET}/{ds.replace('-', '')}",
-            "output_path":            f"{OUTPUT_BUCKET}/recovery/{ds.replace('-', '')}",
+            "run_id_to_recover": run_id_to_recover,
+            "recovery_date": ds,
+            "input_path": f"{EVENTS_BUCKET}/{ds.replace('-', '')}",
+            "output_path": f"{OUTPUT_BUCKET}/recovery/{ds.replace('-', '')}",
         }
         log.info("Parâmetros de recuperação: %s", params)
         return params
@@ -82,7 +82,7 @@ with DAG(
         poke_interval=30,
         timeout=60 * 5,
         mode="reschedule",
-        soft_fail=True,     # não bloqueia pipeline se serviço estiver fora
+        soft_fail=True,  # não bloqueia pipeline se serviço estiver fora
     )
 
     wait_orders = MicroserviceHealthSensor(
@@ -107,11 +107,18 @@ with DAG(
                 recovery_params["input_path"],
                 recovery_params["failed_services"],
             )
-            return {"status": "success", "records_reprocessed": 12_480, "path": recovery_params["output_path"]}
+            return {
+                "status": "success",
+                "records_reprocessed": 12_480,
+                "path": recovery_params["output_path"],
+            }
 
         @task(task_id="spark_reaggregate_metrics")
         def reaggregate(reparse_result: dict) -> dict:
-            log.info("Simulando reagregação | records=%d", reparse_result["records_reprocessed"])
+            log.info(
+                "Simulando reagregação | records=%d",
+                reparse_result["records_reprocessed"],
+            )
             return {"status": "success", "metrics_recomputed": 8}
 
         result = reparse(params)
@@ -126,9 +133,9 @@ with DAG(
         output_path = recovery_params["output_path"]
         log.info("Validando output em: %s", output_path)
         validation = {
-            "output_path":       output_path,
+            "output_path": output_path,
             "validation_passed": True,
-            "record_count":      12_480,
+            "record_count": 12_480,
         }
         log.info("✅ Validação OK: %d registros", validation["record_count"])
         return validation
@@ -148,13 +155,26 @@ with DAG(
 
     @task(task_id="register_recovery_result", trigger_rule=TriggerRule.ALL_DONE)
     def register_recovery(**context) -> None:
-        dag_run       = context["dag_run"]
+        dag_run = context["dag_run"]
         task_instances = dag_run.get_task_instances()
         success = all(t.state in ("success", "skipped") for t in task_instances)
-        log.info("Recuperação %s | run_id=%s", "✅ CONCLUÍDA" if success else "⚠️ PARCIAL", dag_run.run_id)
+        log.info(
+            "Recuperação %s | run_id=%s",
+            "✅ CONCLUÍDA" if success else "⚠️ PARCIAL",
+            dag_run.run_id,
+        )
 
     end = EmptyOperator(task_id="end", trigger_rule=TriggerRule.ALL_DONE)
 
     # ── Dependências ───────────────────────────────────────────────────────────
 
-    start >> params >> [wait_payments, wait_orders] >> reprocessed >> validated >> retrigger_main >> register_recovery() >> end
+    (
+        start
+        >> params
+        >> [wait_payments, wait_orders]
+        >> reprocessed
+        >> validated
+        >> retrigger_main
+        >> register_recovery()
+        >> end
+    )

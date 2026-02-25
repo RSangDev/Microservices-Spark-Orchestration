@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
 
 import requests
 from airflow.models import BaseOperator
@@ -22,8 +21,9 @@ class ServiceEventCollectorOperator(BaseOperator):
     """
     Coleta eventos de múltiplos microserviços em paralelo e salva no data lake.
 
-    :param services: Lista de configs de serviços (name, base_url, events_endpoint, etc.)
-    :param output_path: Caminho base para salvar eventos (S3 ou local)
+    :param services: Lista configs de serviços (name, base_url, events_endpoint, etc.)
+    :param output_path: Caminho base para salvar eventos
+     (S3 ou local)
     :param mode: 'full' (todos os serviços) ou 'partial' (apenas críticos/high)
     :param batch_size: Tamanho do batch para paginação da API
     :param compression: Compressão dos arquivos ('snappy', 'gzip', 'none')
@@ -59,7 +59,9 @@ class ServiceEventCollectorOperator(BaseOperator):
 
         self.log.info(
             "📥 Coletando eventos | Modo: %s | Serviços: %d | Output: %s",
-            self.mode, len(self.services), self.output_path,
+            self.mode,
+            len(self.services),
+            self.output_path,
         )
 
         results = {}
@@ -76,17 +78,25 @@ class ServiceEventCollectorOperator(BaseOperator):
                     results[service_name] = result
                     self.log.info(
                         "✅ %s — %d eventos coletados em %.2fs",
-                        service_name, result["event_count"], result["duration_seconds"]
+                        service_name,
+                        result["event_count"],
+                        result["duration_seconds"],
                     )
                 except Exception as e:
-                    self.log.error("❌ Falha ao coletar de %s: %s", service_name, str(e))
+                    self.log.error(
+                        "❌ Falha ao coletar de %s: %s", service_name, str(e)
+                    )
                     results[service_name] = {"status": "failed", "error": str(e)}
 
         summary = {
             "mode": self.mode,
             "output_path": self.output_path,
-            "services_collected": len([r for r in results.values() if r.get("status") != "failed"]),
-            "services_failed": len([r for r in results.values() if r.get("status") == "failed"]),
+            "services_collected": len(
+                [r for r in results.values() if r.get("status") != "failed"]
+            ),
+            "services_failed": len(
+                [r for r in results.values() if r.get("status") == "failed"]
+            ),
             "total_events": sum(r.get("event_count", 0) for r in results.values()),
             "details": results,
         }
@@ -102,12 +112,13 @@ class ServiceEventCollectorOperator(BaseOperator):
     def _collect_from_service(self, service: dict, ds: str, ts: str) -> dict:
         """Coleta todos os eventos de um serviço com paginação."""
         import time
+
         start = time.time()
 
         name = service["name"]
         base_url = service["base_url"]
         endpoint = service.get("events_endpoint", "/api/v1/events/export")
-        conn_id = service.get("conn_id")
+        # conn_id = service.get("conn_id")
 
         all_events = []
         page = 1
