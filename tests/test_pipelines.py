@@ -44,14 +44,14 @@ class TestDagStructure:
         assert not missing, f"DAGs ausentes: {missing}"
 
     def test_orchestration_dag_config(self, dagbag):
-        dag = dagbag.get_dag("microservices_orchestration_pipeline")
+        dag = dagbag.dags.get("microservices_orchestration_pipeline")
         assert dag is not None
         assert dag.max_active_runs == 2
         assert dag.catchup is False
         assert "microservices" in dag.tags
 
     def test_recovery_dag_config(self, dagbag):
-        dag = dagbag.get_dag("service_recovery_pipeline")
+        dag = dagbag.dags.get("service_recovery_pipeline")
         assert dag is not None
         assert dag.max_active_runs == 1
         assert "recovery" in dag.tags
@@ -83,7 +83,7 @@ class TestDagStructure:
                 pytest.fail(f"Ciclo em {dag_id}: {e}")
 
     def test_default_args_retries(self, dagbag):
-        dag = dagbag.get_dag("microservices_orchestration_pipeline")
+        dag = dagbag.dags.get("microservices_orchestration_pipeline")
         assert dag.default_args["retries"] == 2
 
 
@@ -128,7 +128,7 @@ class TestDagSyntax:
         import os
 
         expected = {
-            "microservices_orchestration_pipeline.py": "microservices_orchestration_pipeline",  # noqa
+            "microservices_orchestration_pipeline.py": "microservices_orchestration_pipeline", # noqa
             "service_recovery_pipeline.py": "service_recovery_pipeline",
         }
         for path in self._get_dag_files():
