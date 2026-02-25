@@ -128,7 +128,7 @@ class TestDagSyntax:
         import os
 
         expected = {
-            "microservices_orchestration_pipeline.py": "microservices_orchestration_pipeline", # noqa
+            "microservices_orchestration_pipeline.py": "microservices_orchestration_pipeline",  # noqa
             "service_recovery_pipeline.py": "service_recovery_pipeline",
         }
         for path in self._get_dag_files():
